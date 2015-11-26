@@ -7,14 +7,17 @@ cr = Crossref()
 SEARCH_TERM = "ursus maritimus"
 LICENSES_FILE = "licenses.txt"
 URLS_FILE = "urls.txt"
+
+# Typical: ['unspecified', 'text/plain', 'text/xml', 'application/pdf', 'application/xml']
 CONTENT_TYPES = set(['text/plain', 'unspecified'])
 
 def search(offset=0, limit=200):
-  query = cr.works(query=SEARCH_TERM, filter={"has_full_text": True, "has_license":True})
+  "Perform a search with the SEARCH_TERM query."
+  query = cr.works(query=SEARCH_TERM, offset=offset, limit=limit, filter={"has_full_text": True, "has_license":True})
   return query
 
 def get_agreed_licenses():
-  "Fetch the list of licenses that have been agreed to in licenses file."
+  "Fetch the list of licenses that have been agreed to in licenses file, possibly empty."
   licenses = []
   try:
     with open(LICENSES_FILE, "r") as licenses_file:
@@ -28,13 +31,22 @@ def get_agreed_licenses():
 def update_licenses_for_query():
   "Update the licenses file with the licenses that apply to the works retrieved by the query."
   query = search()
-  all_licenses_all_items = [[license['URL'] for license in item['license']] for item in query.items()]
+  page_size = query.items_per_page()
+  pages = xrange(0, query.total_results(), page_size)
+
+  # Fetch the license for each file in the search results. Keep the set of unique files.
+  all_licenses_all_items = []
+
+  for offset in pages:
+    print("Fetch offset %d, items %d" % (offset,  page_size))
+    query = search(offset=offset, limit=page_size)
+
+    all_licenses_all_items += [[license['URL'] for license in item['license']] for item in query.items()]
 
   distinct_licenses = set(itertools.chain.from_iterable(all_licenses_all_items))
 
-  # Merge with already agreed licenses and update file.
+  # Merge with already agreed licenses and write back to licenses file.
   already_agreed_licenses = get_agreed_licenses()
-
   all_licenses = already_agreed_licenses.union(distinct_licenses)
 
   with open(LICENSES_FILE, "w") as licenses_file:
@@ -43,11 +55,10 @@ def update_licenses_for_query():
       licenses_file.write("\n")
 
 def fetch_urls_for_query():
-  "Retrieve the urls of works that conform to the query and have the right license, store in urls file."
+  "Retrieve the urls of works that conform to the query and have the right license, store in URLs file."
   agreed_licenses = get_agreed_licenses()
 
   with open(URLS_FILE, "w") as urls_file:
-    
     query = search()
     
     page_size = query.items_per_page()
@@ -57,9 +68,11 @@ def fetch_urls_for_query():
       print("Fetch offset %d, items %d" % (offset,  page_size))
       query = search(offset=offset, limit=page_size)
 
-
       for work in query.items():
         doi = work['DOI']
+
+        # There may be multiple licenses for each DOI.
+        # Proceed if at least one matches one of the ones we accept.
         licenses = set([license['URL'] for license in work['license']])
         
         if licenses.intersection(agreed_licenses):
@@ -74,13 +87,11 @@ def fetch_urls_for_query():
             urls_file.write("\n")
          
         else:
-          print("License not allowed for " + doi + " : " + licenses)
-
-
+          print("License not allowed for %s : %s" % (doi, licenses))
 
 def main(commands):
   if len(commands) != 1:
-    print("Please run with 'licenses' or 'fetch' argument")
+    print("Please run with 'licenses' or 'fetch' argument. See REAMDE.md .")
     exit()
 
   command = commands[0]
@@ -90,7 +101,7 @@ def main(commands):
   elif command == "fetch":
     fetch_urls_for_query()
   else:
-    print("Please run with 'licenses' or 'fetch' argument")
+    print("Please run with 'licenses' or 'fetch' argument. See README.md .")
 
 if __name__ == "__main__":
     main(sys.argv[1:])
