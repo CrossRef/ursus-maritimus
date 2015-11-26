@@ -16,10 +16,12 @@ def search(offset=0, limit=200):
 def get_agreed_licenses():
   "Fetch the list of licenses that have been agreed to in licenses file."
   licenses = []
-  
-  with open(LICENSES_FILE, "r") as licenses_file:
-    licenses = [license.strip() for license in licenses_file.readlines()]
-
+  try:
+    with open(LICENSES_FILE, "r") as licenses_file:
+      licenses = [license.strip() for license in licenses_file.readlines()]
+  except IOError:
+    # Ignore if file doesn't exist.
+    pass
   return set(licenses)
 
 
